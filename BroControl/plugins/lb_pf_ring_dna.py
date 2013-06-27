@@ -28,10 +28,14 @@ class LBPFRingDNA(BroControl.plugin.Plugin):
                 continue
 
             # Make sure we have only one command per host (the choice of node
-            # on each host is arbitrary).
+            # on each host is arbitrary), because a dna interface can be
+            # opened by only one process.
             if nn.host not in workerhosts:
                 workerhosts.add(nn.host)
-                cmds += [(nn, "pfdnacluster_master -i %s -c %d -n %d" % (nn.interface, pfringid, int(nn.lb_procs)))]
+                cmds += [(nn, "pfdnacluster_master -d -i %s -c %d -n %d" % (nn.interface, pfringid, int(nn.lb_procs)))]
+
+            # Bro workers will use this pfdnacluster_master interface.
+            nn.interface = "dnacluster:%d" % pfringid
 
         for (nn, success, out) in self.executeParallel(cmds):
             if not success:
