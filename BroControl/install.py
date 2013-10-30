@@ -1,9 +1,7 @@
 # Functions to install files on all nodes. 
 
 import os
-import sys
 import glob
-import fileinput
 import re
 
 import util
@@ -70,6 +68,8 @@ def generateDynamicVariableScript():
 # If local_only is True, nothing is propagated to other nodes.
 def install(local_only):
 
+    hadError = False
+
     config.Config.determineBroVersion()
 
     manager = config.Config.manager()
@@ -80,12 +80,14 @@ def install(local_only):
     for p in policies:
         if os.path.isdir(p):
             util.output("removing old policies in %s ..." % p, False)
-            execute.rmdir(manager, p)
+            if not execute.rmdir(manager, p):
+                hadError = True
             util.output(" done.")
 
     util.output("creating policy directories ...", False)
     for p in policies:
-        execute.mkdir(manager, p)
+        if not execute.mkdir(manager, p):
+            hadError = True
     util.output(" done.")
 
     # Install local site policy.
@@ -96,15 +98,13 @@ def install(local_only):
         for dir in config.Config.sitepolicypath.split(":"):
             dir = config.Config.subst(dir)
             for file in glob.glob(os.path.join(dir, "*")):
-                if execute.isfile(manager, file):
-                    execute.install(manager, file, dst)
-                elif execute.isdir(manager, file):
-                    dstdir = os.path.join(dst, os.path.basename(file))
-                    execute.install(manager, file, dstdir)
+                if not execute.install(manager, file, dst):
+                    hadError = True
         util.output(" done.")
 
     makeLayout(config.Config.policydirsiteinstallauto)
-    makeLocalNetworks(config.Config.policydirsiteinstallauto)
+    if not makeLocalNetworks(config.Config.policydirsiteinstallauto):
+        hadError = True
     makeConfig(config.Config.policydirsiteinstallauto)
 
     current = config.Config.subst(os.path.join(config.Config.logdir, "current"))
@@ -116,7 +116,7 @@ def install(local_only):
     generateDynamicVariableScript()
 
     if local_only:
-        return
+        return not hadError
 
     # Sync to clients.
     util.output("updating nodes ... ", False)
@@ -135,6 +135,7 @@ def install(local_only):
             continue
 
         if not execute.isAlive(n.addr):
+            hadError = True
             continue
 
         nodes += [n]
@@ -148,9 +149,12 @@ def install(local_only):
         for (node, success) in execute.mkdirs(dirs):
             if not success:
                 util.warn("cannot create directory %s on %s" % (dir, node.name))
+                hadError = True
 
         paths = [config.Config.subst(dir) for (dir, mirror) in Syncs if mirror]
-        execute.sync(nodes, paths)
+        if not execute.sync(nodes, paths):
+            hadError = True
+
         util.output("done.")
 
         # Note: the old code created $brobase explicitly but it seems the loop above should
@@ -174,10 +178,15 @@ def install(local_only):
         for (node, success) in execute.mkdirs(dirs):
             if not success:
                 util.warn("cannot create (some of the) directories %s on %s" % (",".join(paths), node.name))
+                hadError = True
 
         paths = [config.Config.subst(dir) for (dir, mirror) in NFSSyncs if mirror]
-        execute.sync(nodes, paths)
+        if not execute.sync(nodes, paths):
+            hadError = True
+
         util.output("done.")
+
+    return not hadError
 
 # Create Bro-side broctl configuration broctl-layout.bro.
 port = -1
@@ -225,7 +234,7 @@ def makeLayout(path, silent=False):
         proxies = config.Config.nodes("proxies")
 
         print >>out, "# Automatically generated. Do not edit."
-        print >>out, "redef Cluster::nodes = {";
+        print >>out, "redef Cluster::nodes = {"
 
         # Control definition.  For now just reuse the manager information.
         print >>out, "\t[\"control\"] = [$node_type=Cluster::CONTROL, $ip=%s, $zone_id=\"%s\", $p=%s/tcp]," % (util.formatBroAddr(manager.addr), config.Config.zoneid, nextPort(manager))
@@ -293,7 +302,7 @@ def makeLocalNetworks(path, silent=False):
 
     if not os.path.exists(netcfg):
         util.warn("list of local networks does not exist in %s" % netcfg)
-        return
+        return False
 
     if ( not silent ):
         util.output("generating local-networks.bro ...", False)
@@ -317,6 +326,8 @@ def makeLocalNetworks(path, silent=False):
     if ( not silent ):
         util.output(" done.")
 
+    return True
+
 
 def makeConfig(path, silent=False):
     manager = config.Config.manager()
@@ -332,9 +343,9 @@ def makeConfig(path, silent=False):
     print >>out, "# Automatically generated. Do not edit."
     print >>out, "redef Notice::mail_dest = \"%s\";" % config.Config.mailto
     print >>out, "redef Notice::mail_dest_pretty_printed = \"%s\";" % config.Config.mailalarmsto
-    print >>out, "redef Notice::sendmail  = \"%s\";" % config.Config.sendmail;
-    print >>out, "redef Notice::mail_subject_prefix  = \"%s\";" % config.Config.mailsubjectprefix;
-    print >>out, "redef Notice::mail_from  = \"%s\";" % config.Config.mailfrom;
+    print >>out, "redef Notice::sendmail  = \"%s\";" % config.Config.sendmail
+    print >>out, "redef Notice::mail_subject_prefix  = \"%s\";" % config.Config.mailsubjectprefix
+    print >>out, "redef Notice::mail_from  = \"%s\";" % config.Config.mailfrom
     if manager.type != "standalone":
         print >>out, "@if ( Cluster::local_node_type() == Cluster::MANAGER )"
     print >>out, "redef Log::default_rotation_interval = %s secs;" % config.Config.logrotationinterval

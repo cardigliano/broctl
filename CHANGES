@@ -1,4 +1,190 @@
 
+1.2-beta-22 | 2013-10-26 19:19:31 -0700
+
+  * Document which broctl options override Bro script variables.
+    (Daniel Thayer)
+
+  * Updates and clarifications to docs. (Daniel Thayer)
+    
+1.2-beta-17 | 2013-10-18 13:22:16 -0700
+
+  * Fix internal lookup of nodes, which would fail to return the right
+    items in some cases when node naming didn't match standard
+    terminology. Addresses BIT-1091. (Daniel Thayer)
+
+1.2-beta-13 | 2013-10-10 13:38:58 -0700
+
+  * Updating copyright notice. (Robin Sommer)
+    
+  * Fix the broctl "top" command output on Linux. (Daniel Thayer)
+    
+  * Fix a race condition when sendmail option is empty string. (Daniel
+    Thayer)
+
+  * Fix a deadlock when capturing output from local command. (Daniel
+    Thayer)
+
+  * Improve portability of shell scripts used by broctl. (Daniel
+    Thayer)
+
+  * Fix for setting REPO in Makefile. (Robin Sommer)
+
+1.2-beta | 2013-09-23 20:30:31 -0700
+
+  * Update 'make dist' target. (Jon Siwek)
+
+  * Fix problem with the "broargs" options that would occur when a
+    command-line argument in broargs contained a space. (Daniel
+    Thayer)
+
+  * Change submodules to fixed URL. (Jon Siwek)
+    
+1.1-190 | 2013-09-20 14:26:41 -0700
+
+  * Add more links in BroControl documentation. (Daniel Thayer)
+    
+1.1-188 | 2013-09-18 14:46:10 -0700
+
+  * Add tests for new BroControl features (CPU pinning, PF_RING
+    multiple cluster IDs, "env_vars") (Daniel Thayer)
+
+  * Fix link to git repo to be consistent with other links. (Daniel
+    Thayer)
+
+  * Fix broken doc links. (Jon Siwek)
+
+1.1-182 | 2013-08-27 13:32:35 -0700
+
+  * Improve CPU pinning documentation and error message. Addresses
+    BIT-1068 (Daniel Thayer)
+
+  * Switching to relative submodule paths. (Robin Sommer)
+    
+  * Documentation fixes. (Daniel Thayer)
+    
+  * Minor fixes for broctl tests. (Daniel Thayer)
+    
+  * Fix bug with usage of cmd_restart_pre method. (Daniel Thayer)
+    
+  * Remove unused subdirectory "spool/scripts". (Daniel Thayer)
+    
+  * Remove unused imports, variables, and semicolons. (Daniel Thayer)
+    
+1.1-171 | 2013-08-16 15:36:14 -0700
+
+  * Changed and document the behavior of the SitePolicyPath broctl
+    option to not clobber existing files/directories when copying, in
+    order to match the expected behavior (directories earlier in the
+    list take precedence over directories later in the list when
+    duplicate filenames are encountered). Addresses BIT-714. (Daniel
+    Thayer)
+
+  * A series of changes to make broctl return useful exit codes. (Vlad
+    Grigorescu, Daniel Thayer).
+
+    Generally, broctl now returns 0 if everything went ok with regards
+    to what the documentation says should have happened, and 1
+    otherwise. We keep the following exceptions for now though:
+
+        - "cron" always returns 0.
+        - "status" and "top" return 0 if all bro nodes are
+          running, and returns 1 otherwise.
+        - commands provides by plugins always return 0.
+
+1.1-158 | 2013-08-02 17:06:57 -0700
+
+  * Add ability to set environment variables in node.cfg and
+    broctl.cfg via new "env_vars" options taking a comma-separated
+    list (e.g., "env_vars=VAR1=1,VAR2=2"). Variables in node.cfg take
+    prioroty over broctl.cfg. Addresses BIT-1010. (Daniel Thayer)
+
+1.1-150 | 2013-07-14 08:00:44 -0700
+
+  * Fix broken link in README. (Bernhard Amann, thanks kraigu)
+
+1.1-148 | 2013-07-03 17:06:44 -0700
+
+  * Updates to test infrastructure. (Daniel Thayer)
+
+    - Fix canonifier script for handling missing gdb.
+    - Update baselines for recent changes to crash-diag.
+    - Remove "make quick" from the README.
+    - Minor cleanup of the build script.
+    - Remove unused Makefile variable.
+    - Remove the "-j" option to make as it can cause lock-ups on
+      some machines.
+    - Replace realpath command with more portable Python equivalent.
+
+1.1-140 | 2013-06-07 16:35:08 -0700
+
+  * Adding OS to crash output. (Robin Sommer)
+
+  * Giving the broctl test suite its own build directory. (Robin Sommer)
+
+1.1-137 | 2013-05-31 17:16:14 -0700
+
+  * New regression test suite for BroControl. "make test" runs it. See
+    testing/README for more information. (Daniel Thayer)
+    
+1.1-101 | 2013-05-24 17:55:41 -0700
+
+  * Add support for CPU pinning. To use CPU pinning, a new per-node
+    option "pin_cpus" can be specified in node.cfg, and the OS must be
+    either Linux or FreeBSD (if such a node.cfg is used on another OS,
+    then the "pin_cpus" option is ignored). Addresses #996. (Daniel
+    Thayer)
+
+1.1-99 | 2013-05-24 17:34:44 -0700
+
+  * Allow multiple conn-summary.log files to be processed to avoid
+    conflicts when stopping Bro shortly after a log rotation. (Daniel
+    Thayer)
+
+  * Prevent deletion of unarchived logs during "broctl stop" when
+    archiving takes a while. (Daniel Thayer)
+
+1.1-94 | 2013-05-17 13:29:04 -0700
+
+  * Don't import readline, it's loaded implicitly already. (Daniel
+    Thayer)
+
+1.1-92 | 2013-05-17 07:37:13 -0700
+
+  * Removing uncessary directory check. (Robin Sommer)
+
+1.1-91 | 2013-05-16 20:25:00 -0700
+
+  * Stop trying to create the stats/www directory if it already
+    exists. Addresses #1007. (Seth Hall)
+
+  * Another batch of fixes. (Daniel Thayer)
+
+    This includes:
+
+    - Fix usage of PF_RING interface containing semicolons.
+    - Fix broctl exec command to check for errors.
+    - Fix a race condition during broctl start.
+    - Remove some dead code.
+    - Fix exit status output in debug log.
+
+  * Add support for the "--scriptdir" configure option. Adresses
+    #993. (Daniel Thayer)
+
+1.1-79 | 2013-05-10 19:39:55 -0700
+
+  * A set of bug fixes and robustness improvements. (Daniel Thayer)
+
+    This includes:
+    
+    - Add more error checking and reporting to cron command.
+    - Improve error checking of top helper output.
+    - Improve error checking of capstats output.
+    - Fix a bug when the time command is not found.
+    - Fix the broctl top and cron commands on OS X.
+    - Fix a couple of bugs in the broctl ps plugin.
+    - Remove unused broctl scripts.
+    - Improve the check-pid helper script.
+
 1.1-63 | 2013-04-25 16:14:51 -0400
 
   * Add support for multiple PF_RING cluster IDs

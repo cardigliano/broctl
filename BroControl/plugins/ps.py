@@ -25,9 +25,9 @@ class PsBro(BroControl.plugin.Plugin):
 
         # Get the nodes the user wants.
         if args:
-             nodes = self.parseNodes(args)
+            nodes = self.parseNodes(args)
         else:
-             nodes = self.nodes()
+            nodes = self.nodes()
 
         if not nodes:
             self.message("No nodes given.")
@@ -39,7 +39,6 @@ class PsBro(BroControl.plugin.Plugin):
         pids = {}
 
         for n in nodes:
-            host = n.host
             pid = n.getPID()
             if pid:
                 p = pids.setdefault(n.host, set())
@@ -49,14 +48,16 @@ class PsBro(BroControl.plugin.Plugin):
 
         # Build commands to execute.
 
-        cmd = "POSIXLY_CORRECT=1 ps axco user,pid,ppid,%cpu,%mem,vsz,rss,tt,state,start,time,command | grep 'PID\\\\|bro$'"
+        cmd = "POSIXLY_CORRECT=1 ps axco user,pid,ppid,%cpu,%mem,vsz,rss,tt,state,start,time,command | grep -e PID -e 'bro$'"
         cmds = [(n, cmd) for n in host_nodes.values()]
         cmds.sort(key=lambda n: n[0].name)
 
         # Run them in parallel and print output.
 
         def startNode(n, success, output, first_node):
-            if first_node:
+            # Note: output might be None or an empty list, in which case we
+            # still want the "failed" message below.
+            if first_node and output:
                 print "       ", output[0]
 
             if not success:
@@ -68,11 +69,17 @@ class PsBro(BroControl.plugin.Plugin):
         first_node = True
 
         for (n, success, output) in self.executeParallel(cmds):
+            # Remove stderr output (if any)
+            while output and not output[0].startswith("USER"):
+                output = output[1:]
+
             startNode(n, success, output, first_node)
+
+            if not output:
+                continue
 
             for line in output[1:]:
 
-                first_line = False
                 m = line.split()
                 (pid, ppid) = (int(m[1]), int(m[2]))
                 try:

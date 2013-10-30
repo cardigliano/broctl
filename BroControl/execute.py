@@ -5,12 +5,11 @@ import os
 import sys
 import socket
 import shutil
-import re
-import util
 import time
 import subprocess
 
 import config
+import util
 
 haveBroccoli = True
 
@@ -40,9 +39,9 @@ def popen(cmdline, stderr_to_stdout=False, donotcaptureoutput=False):
     # Compatibility with older popen4.
     proc.tochild = proc.stdin
     if proc.stdout != None:
-       proc.fromchild = proc.stdout
+        proc.fromchild = proc.stdout
     else:
-       proc.fromchild = []
+        proc.fromchild = []
 
     return proc
 
@@ -144,26 +143,25 @@ def isdir(host, path):
         (success, output) = runHelper(host, "is-dir", [path])
         return success
 
-# Copies src to dst, preserving permission bits.
+# Copies src to dst, preserving permission bits, but does not clobber existing
+# files/directories.
 # Works for files and directories (recursive).
-def install(host, src, dst):
+def install(host, src, dstdir):
     if isLocal(host):
         if not exists(host, src):
             util.output("file does not exist: %s" % src)
             return False
 
-        if os.path.isfile(dst):
-            try:
-                os.remove(dst)
-            except OSError, e:
-                print 'install: os.remove(%s): %s' % (dst, e.strerror)
-                sys.exit(1)
+        dst = os.path.join(dstdir, os.path.basename(src))
+        if exists(host, dst):
+            # Do not clobber existing files/dirs (this is not an error)
+            return True
 
-        util.debug(1, "cp %s %s" % (src, dst))
+        util.debug(1, "cp %s %s" % (src, dstdir))
 
         try:
             if os.path.isfile(src):
-                shutil.copy2(src, dst)
+                shutil.copy2(src, dstdir)
             elif os.path.isdir(src):
                 shutil.copytree(src, dst)
         except OSError:
@@ -171,14 +169,14 @@ def install(host, src, dst):
             # ignore errors.
             pass
 
-        return True
     else:
         util.error("install() not yet supported for remote hosts")
-        return False
+
+    return True
 
 # rsyncs paths from localhost to destination hosts.
 def sync(nodes, paths):
-
+    result = True
     cmds = []
     for n in nodes:
         args = ["-rRl", "--delete", "--rsh=\"ssh -o ConnectTimeout=30\""]
@@ -190,6 +188,9 @@ def sync(nodes, paths):
     for (id, success, output) in runLocalCmdsParallel(cmds):
         if not success:
             util.warn("error rsyncing to %s: %s" % (util.scopeAddr(id.host), output))
+            result = False
+
+    return result
 
 # Checks whether the given host is alive.
 _deadHosts = {}
@@ -224,12 +225,12 @@ def captureCmd(cmd, env = "", input = None):
     rc = proc.wait()
     output = [line.strip() for line in proc.fromchild]
 
-    util.debug(1, os.WEXITSTATUS(rc), prefix="local")
+    util.debug(1, rc, prefix="local")
 
     for line in output:
         util.debug(2, "           > %s" % line, prefix="local")
 
-    return (os.WIFEXITED(rc) and os.WEXITSTATUS(rc) == 0, output)
+    return (rc == 0, output)
 
 ## FIXME: Replace "captureCmd" with "runLocalCmd".
 
@@ -237,40 +238,28 @@ def captureCmd(cmd, env = "", input = None):
 # with success being true if the command terminated with exit code 0,
 # and output being the combinded stdout/stderr output of the command.
 def runLocalCmd(cmd, env = "", input=None, donotcaptureoutput=False):
-    proc = _runLocalCmdInit("single", cmd, env, input, donotcaptureoutput)
-    if not proc:
-        return (False, [])
-
-    return _runLocalCmdWait(proc)
+    proc = _runLocalCmdInit("single", cmd, env, donotcaptureoutput)
+    return _runLocalCmdWait(proc, input)
 
 # Same as above but runs a set of local commands in parallel.
 # Cmds is a list of (id, cmd, envs, input) tuples, where id is
 # an arbitrary cookie identifying each command.
 # Returns a list of (id, success, output) tuples.
-# 'output' is None (vs. []) if we couldn't connect to host.
 def runLocalCmdsParallel(cmds):
-
     results = []
     running = []
 
     for (id, cmd, envs, input) in cmds:
-        proc = _runLocalCmdInit(id, cmd, envs, input)
-        if proc:
-            running += [(id, proc)]
-        else:
-            results += [(id, False, None)]
+        proc = _runLocalCmdInit(id, cmd, envs)
+        running += [(id, proc, input)]
 
-    for (id, proc) in running:
-        status  = _runLocalCmdWait(proc)
-        if status:
-            (success, output) = status
-            results += [(id, success, output)]
-        else:
-            results += [(id, False, None)]
+    for (id, proc, input) in running:
+        (success, output) = _runLocalCmdWait(proc, input)
+        results += [(id, success, output)]
 
     return results
 
-def _runLocalCmdInit(id, cmd, env, input, donotcaptureoutput=False):
+def _runLocalCmdInit(id, cmd, env, donotcaptureoutput=False):
 
     if not env:
         env = ""
@@ -280,29 +269,23 @@ def _runLocalCmdInit(id, cmd, env, input, donotcaptureoutput=False):
 
     proc = popen(cmdline, stderr_to_stdout=True, donotcaptureoutput=donotcaptureoutput)
 
-    if input:
-        print >>proc.tochild, input
-
-    proc.tochild.close()
     return proc
 
-def stripNL(str):
-    if len(str) == 0 or str[-1] != "\n":
-        return str
+def _runLocalCmdWait(proc, input):
 
-    return str[0:-1]
+    (out, err) = proc.communicate(input)
+    rc = proc.returncode
 
-def _runLocalCmdWait(proc):
+    output = []
+    if out:
+        output = out.splitlines()
 
-    rc = proc.wait()
-    output = [stripNL(line) for line in proc.fromchild]
-
-    util.debug(1, os.WEXITSTATUS(rc), prefix="local")
+    util.debug(1, rc, prefix="local")
 
     for line in output:
         util.debug(2, "           > %s" % line, prefix="local")
 
-    return (os.WIFEXITED(rc) and os.WEXITSTATUS(rc) == 0, output)
+    return (rc == 0, output)
 
 
 # Runs arbitrary commands in parallel on nodes. Input is list of (node, cmd).
@@ -564,10 +547,10 @@ def _sendEventWait(node, result_event, bc):
 
     # Wait for reply event.
     cnt = 0
-    bc.processInput();
+    bc.processInput()
     while not bc.got_result:
         time.sleep(1)
-        bc.processInput();
+        bc.processInput()
 
         cnt += 1
         if cnt > int(config.Config.commtimeout):

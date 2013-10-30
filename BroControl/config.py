@@ -1,15 +1,11 @@
 # Functions to read and access the broctl configuration.
 
 import os
-import sys
 import socket
-import imp
 import re
 import copy
-
 import ConfigParser
 
-import doc
 import execute
 import node as node_mod
 import options
@@ -27,7 +23,7 @@ import util
 Config = None # Globally accessible instance of Configuration.
 
 class Configuration:
-    def __init__(self, config, basedir, version):
+    def __init__(self, config, basedir, broscriptdir, version):
         global Config
         Config = self
 
@@ -39,6 +35,7 @@ class Configuration:
 
         # Set defaults for options we get passed in.
         self._setOption("brobase", basedir)
+        self._setOption("broscriptdir", broscriptdir)
         self._setOption("version", version)
 
         # Initialize options.
@@ -58,9 +55,19 @@ class Configuration:
             util.error("cannot run uname")
         self._setOption("os", output[0].lower().strip())
 
+        if self.config["os"] == "linux":
+            self._setOption("pin_command", "taskset -c")
+        elif self.config["os"] == "freebsd":
+            self._setOption("pin_command", "cpuset -l")
+        else:
+            self._setOption("pin_command", "")
+
         # Find the time command (should be a GNU time for best results).
         (success, output) = execute.captureCmd("which time")
-        self._setOption("time", output[0].lower().strip())
+        if success:
+            self._setOption("time", output[0].lower().strip())
+        else:
+            self._setOption("time", "")
 
     def initPostPlugins(self):
         plugin.Registry.addNodeKeys()
@@ -68,6 +75,19 @@ class Configuration:
         # Read node.cfg and broctl.dat.
         self._readNodes()
         self.readState()
+
+        # If "env_vars" was specified in broctl.cfg, then apply to all nodes.
+        varlist = self.config.get("env_vars")
+        if varlist:
+            try:
+                global_env_vars = self._getEnvVarDict(varlist)
+            except ValueError, err:
+                util.error("broctl.cfg: %s" % err)
+
+            for node in self.nodes("all"):
+                for (key, val) in global_env_vars.items():
+                    # Values from node.cfg take precedence over broctl.cfg
+                    node.env_vars.setdefault(key, val)
 
         # Now that the nodes have been read in, set the standalone config option.
         standalone = "0"
@@ -106,12 +126,17 @@ class Configuration:
         else:
             return self.config.items()
 
-    # Returns a list of Nodes.
+    # Returns a list of Nodes (the list will be empty if no matching nodes
+    # are found).
+    # - If tag is None, all Nodes are returned.
     # - If tag is "all", all Nodes are returned if "expand_all" is true.
     #     If "expand_all" is false, returns an empty list in this case.
     # - If tag is "proxies", all proxy Nodes are returned.
     # - If tag is "workers", all worker Nodes are returned.
-    # - If tag is "manager", the manager Node is returned.
+    # - If tag is "manager", the manager Node is returned (cluster config) or
+    #     the standalone Node is returned (standalone config).
+    # - If tag is "standalone", the standalone Node is returned.
+    # - If tag is the name of a node, then that node is returned.
     def nodes(self, tag=None, expand_all=True):
         nodes = []
         type = None
@@ -122,14 +147,17 @@ class Configuration:
 
             tag = None
 
+        elif tag == "standalone":
+            type = "standalone"
+
+        elif tag == "manager":
+            type = "manager"
+
         elif tag == "proxies":
             type = "proxy"
 
         elif tag == "workers":
             type = "worker"
-
-        elif tag in self.config:
-            type = tag
 
         for n in self.nodelist.values():
             if type:
@@ -146,7 +174,8 @@ class Configuration:
 
         return nodes
 
-    # Returns the manager Node.
+    # Returns the manager Node (cluster config) or standalone Node (standalone
+    # config).
     def manager(self):
         n = self.nodes("manager")
         if n:
@@ -185,6 +214,51 @@ class Configuration:
                 value = ""
 
             str = str[0:m.start(1)] + value + str[m.end(1):]
+
+
+    # Convert string into list of integers (ValueError is raised if any
+    # item in the list is not a non-negative integer).
+    def _getPinCPUList(self, str, numprocs):
+        if not str:
+            return []
+
+        cpulist = map(int, str.split(","))
+        # Minimum allowed CPU number is zero.
+        if min(cpulist) < 0:
+            raise ValueError
+
+        # Make sure list is at least as long as number of worker processes.
+        cpulen = len(cpulist)
+        if numprocs > cpulen:
+            cpulist = [ cpulist[i % cpulen] for i in xrange(numprocs) ]
+
+        return cpulist
+
+    # Convert a string consisting of a comma-separated list of environment
+    # variables (e.g. "VAR1=123, VAR2=456") to a dictionary.
+    # If the string is empty, then return an empty dictionary.  Upon error,
+    # a ValueError is raised.
+    def _getEnvVarDict(self, str):
+        env_vars = {}
+
+        if str:
+            # If the entire string is quoted, then remove only those quotes.
+            if (str.startswith('"') and str.endswith('"')) or (str.startswith("'") and str.endswith("'")):
+                str = str[1:-1]
+
+        if str:
+            for keyval in str.split(","):
+                try:
+                    (key, val) = keyval.split("=", 1)
+                except ValueError:
+                    raise ValueError("missing '=' after environment variable name")
+
+                if not key.strip():
+                    raise ValueError("missing environment variable name")
+
+                env_vars[key.strip()] = val.strip()
+
+        return env_vars
 
     # Parse node.cfg.
     def _readNodes(self):
@@ -234,6 +308,12 @@ class Configuration:
 
                 node.__dict__[key] = val
 
+            # Convert env_vars from a string to a dictionary.
+            try:
+                node.env_vars = self._getEnvVarDict(node.env_vars)
+            except ValueError, err:
+                util.error("%s: section %s: %s" % (file, sec, err))
+
             try:
                 addrinfo = socket.getaddrinfo(node.host, None, 0, 0, socket.SOL_TCP)
                 if len(addrinfo) == 0:
@@ -256,6 +336,8 @@ class Configuration:
 
             node.count = counts[type]
 
+            numprocs = 0
+
             if node.lb_procs:
                 try:
                     numprocs = int(node.lb_procs)
@@ -264,6 +346,15 @@ class Configuration:
                 except ValueError:
                     util.error("%s: value of lb_procs must be an integer in section '%s'" % (file, sec))
 
+            try:
+                pin_cpus = self._getPinCPUList(node.pin_cpus, numprocs)
+            except ValueError:
+                util.error("%s: pin_cpus must be list of non-negative integers in section '%s'" % (file, sec))
+
+            if pin_cpus:
+                node.pin_cpus = pin_cpus[0]
+
+            if node.lb_procs:
                 if not node.lb_method:
                     util.error("%s: no load balancing method given in section '%s'" % (file, sec))
 
@@ -285,14 +376,16 @@ class Configuration:
                 # node names will have a numerical suffix
                 node.name = "%s-1" % sec
 
-                for num in xrange(2, int(node.lb_procs) + 1):
+                for num in xrange(2, numprocs + 1):
                     newnode = copy.deepcopy(node)
-                    # only the node name and count need to be changed
+                    # only the node name, count, and pin_cpus need to be changed
                     newname = "%s-%d" % (sec, num)
                     newnode.name = newname
                     self.nodelist[newname] = newnode
                     counts[type] += 1
                     newnode.count = counts[type]
+                    if pin_cpus:
+                        newnode.pin_cpus = pin_cpus[num-1]
 
                     if newnode.lb_method == "interfaces":
                         newnode.interface = netifs.pop().strip()
@@ -310,6 +403,8 @@ class Configuration:
                 if len(self.nodelist) > 1:
                     util.error("%s: more than one node defined in stand-alone setup" % file)
 
+        manageronlocalhost = False
+
         for n in self.nodelist.values():
             if not n.name:
                 util.error("node configured without a name")
@@ -325,7 +420,14 @@ class Configuration:
                     util.error("script must be run on manager node")
 
                 if ( n.addr == "127.0.0.1" or n.addr == "::1" ) and n.type != "standalone":
-                    util.error("cannot use localhost/127.0.0.1/::1 for manager host in nodes configuration")
+                    manageronlocalhost = True
+
+        # If manager is on localhost, then all other nodes must be on localhost
+        if manageronlocalhost:
+            for n in self.nodelist.values():
+                if n.type != "manager" and n.type != "standalone":
+                    if n.addr != "127.0.0.1" and n.addr != "::1":
+                        util.error("cannot use localhost/127.0.0.1/::1 for manager host in nodes configuration")
 
     # Parses broctl.cfg and returns a dictionary of all entries.
     def _readConfig(self, file, allowstate = False):
@@ -337,7 +439,7 @@ class Configuration:
                 if not line or line.startswith("#"):
                     continue
 
-                args = line.split("=")
+                args = line.split("=", 1)
                 if len(args) != 2:
                     util.error("%s: syntax error '%s'" % (file, line))
 

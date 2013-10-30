@@ -6,6 +6,7 @@ include(cmake/CommonCMakeConfig.cmake)
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" VERSION LIMIT_COUNT 1)
 
 set(PREFIX "${CMAKE_INSTALL_PREFIX}")
+set(BROSCRIPTDIR "${BRO_SCRIPT_INSTALL_PATH}")
 set(ETC "${BRO_ETC_INSTALL_DIR}")
 
 ########################################################################
@@ -70,11 +71,13 @@ endif ()
 ########################################################################
 ## Install
 
+configure_file(broctl-path.in ${CMAKE_CURRENT_BINARY_DIR}/broctl-path)
+
 include(InstallPackageConfigFile)
 include(InstallSymlink)
 include(InstallShellScript)
 
-set(policydir ${BRO_ROOT_DIR}/share/bro)
+set(policydir ${BRO_SCRIPT_INSTALL_PATH})
 
 InstallShellScript(bin bin/broctl.in broctl)
 InstallShellScript(share/broctl/scripts bin/archive-log)
@@ -84,18 +87,14 @@ InstallShellScript(share/broctl/scripts bin/crash-diag)
 InstallShellScript(share/broctl/scripts bin/create-link-for-log)
 InstallShellScript(share/broctl/scripts bin/delete-log)
 InstallShellScript(share/broctl/scripts bin/expire-logs)
-InstallShellScript(share/broctl/scripts bin/fmt-time)
 InstallShellScript(share/broctl/scripts bin/get-prof-log)
 InstallShellScript(share/broctl/scripts bin/is-alive)
 InstallShellScript(share/broctl/scripts bin/local-interfaces)
-InstallShellScript(share/broctl/scripts bin/mail-contents)
 InstallShellScript(share/broctl/scripts bin/make-archive-name)
 InstallShellScript(share/broctl/scripts bin/post-terminate)
 InstallShellScript(share/broctl/scripts bin/remove-link-for-log)
-InstallShellScript(share/broctl/scripts bin/remove-log)
 InstallShellScript(share/broctl/scripts bin/run-bro)
 InstallShellScript(share/broctl/scripts bin/send-mail)
-InstallShellScript(share/broctl/scripts bin/stat-ctime)
 InstallShellScript(share/broctl/scripts bin/stats-to-csv)
 InstallShellScript(share/broctl/scripts bin/update)
 InstallShellScript(share/broctl/scripts bin/update-stats)
@@ -131,10 +130,9 @@ install(DIRECTORY bin/
                         OWNER_READ OWNER_WRITE OWNER_EXECUTE
                         GROUP_READ GROUP_EXECUTE
                         WORLD_READ WORLD_EXECUTE
-        PATTERN "broctl.in" EXCLUDE
-        PATTERN "run-cmd.in" EXCLUDE)
+        PATTERN "broctl.in" EXCLUDE)
 install(DIRECTORY scripts/
-        DESTINATION share/bro
+        DESTINATION ${BRO_SCRIPT_INSTALL_PATH}
         FILES_MATCHING
         PATTERN "*.bro")
 
@@ -184,19 +182,16 @@ if (NOT APPLE AND (${CMAKE_INSTALL_PREFIX} STREQUAL /usr OR
             DIRECTORY_PERMISSIONS ${perms})
     install(DIRECTORY DESTINATION ${SPOOL}/tmp
             DIRECTORY_PERMISSIONS ${perms})
-    install(DIRECTORY DESTINATION ${SPOOL}/scripts
-            DIRECTORY_PERMISSIONS ${perms})
     install(DIRECTORY DESTINATION ${LOGS}
             DIRECTORY_PERMISSIONS ${perms})
     set(EMPTY_WORLD_DIRS
-        "${EMPTY_WORLD_DIRS} ${SPOOL} ${SPOOL}/tmp ${SPOOL}/scripts ${LOGS}"
+        "${EMPTY_WORLD_DIRS} ${SPOOL} ${SPOOL}/tmp ${LOGS}"
         CACHE STRING "" FORCE)
     InstallSymlink(${SPOOL}/broctl-config.sh
                    ${PREFIX}/share/broctl/scripts/broctl-config.sh)
 else ()
     install(DIRECTORY DESTINATION spool)
     install(DIRECTORY DESTINATION spool/tmp)
-    install(DIRECTORY DESTINATION spool/scripts)
     install(DIRECTORY DESTINATION logs)
     InstallSymlink(${PREFIX}/spool/broctl-config.sh
                    ${PREFIX}/share/broctl/scripts/broctl-config.sh)

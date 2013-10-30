@@ -1,14 +1,12 @@
 # Tasks which are to be done on a regular basis from cron.
 
 import os
-import sys
+import time
 
 import util
 import config
 import execute
 import control
-import time
-import shutil
 import plugin
 
 # Triggers all activity which is to be done regularly via cron.
@@ -47,7 +45,9 @@ def doCron(watch):
 
     # Run external command if we have one.
     if config.Config.croncmd:
-        execute.runLocalCmd(config.Config.croncmd)
+        (success, output) = execute.runLocalCmd(config.Config.croncmd)
+        if not success:
+            util.output("error running croncmd: %s" % config.Config.croncmd)
 
     # Mail potential output.
     output = util.getBufferedOutput()
@@ -142,7 +142,8 @@ def _checkDiskSpace():
     if minspace == 0.0:
         return
 
-    for (node, dfs) in control.getDf(config.Config.nodes()).items():
+    hadError, results = control.getDf(config.Config.nodes())
+    for (node, dfs) in results.items():
         for df in dfs:
             fs = df[0]
             total = float(df[1])
@@ -217,10 +218,20 @@ def _updateHTTPStats():
 
     # Create meta file.
     if not os.path.exists(config.Config.statsdir):
-        util.warn("creating directory for stats file: %s" % config.Config.statsdir)
-        os.makedirs(config.Config.statsdir)
+        try:
+            os.makedirs(config.Config.statsdir)
+        except OSError, err:
+            util.output("error creating directory: %s" % err)
+            return
 
-    meta = open(os.path.join(config.Config.statsdir, "meta.dat"), "w")
+        util.warn("creating directory for stats file: %s" % config.Config.statsdir)
+
+    try:
+        meta = open(os.path.join(config.Config.statsdir, "meta.dat"), "w")
+    except IOError, err:
+        util.output("error creating file: %s" % err)
+        return
+
     for node in config.Config.hosts():
         print >>meta, "node", node, node.type, node.host
 

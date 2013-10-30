@@ -2,9 +2,10 @@
 # One BroControl node.
 #
 
+import os
+
 import doc
 import config
-import os
 
 class Node:
     """Class representing one node of the BroControl maintained setup. In
@@ -24,6 +25,12 @@ class Node:
             The type of the node, which will be one of ``standalone``,
             ``manager``, ``proxy``, and ``worker``.
 
+        ``env_vars`` (string)
+            A comma-separated list of environment variables to set when
+            running Bro (e.g., ``env_vars=VAR1=1,VAR2=2``). These
+            node-specific values override global values (specified in
+            the ``broctl.cfg`` file).
+
         ``host`` (string)
             The hostname of the system the node is running on.
 
@@ -42,13 +49,27 @@ class Node:
             If the load balancing method is ``interfaces``, then this is
             a comma-separated list of network interface names to use.
 
+        ``pin_cpus`` (string)
+            A comma-separated list of CPU numbers to which the node's Bro
+            processes will be pinned (if not specified, then CPU pinning will
+            not be used for this node).  This option is only supported on
+            Linux and FreeBSD (it is ignored on all other platforms).  CPU
+            numbering starts at zero (e.g.,
+            the only valid CPU numbers for a machine with one dual-core
+            processor would be 0 and 1).  If the length of this list does not
+            match the number of Bro processes for this node, then some CPUs
+            could have zero (if too many CPU numbers are specified) or more
+            than one (if not enough CPU numbers are specified) Bro processes
+            pinned to them.  Only the specified CPU numbers will be used,
+            regardless of whether additional CPU cores exist.
+
         ``aux_scripts`` (string)
             Any node-specific Bro script configured for this node.
 
         ``zone_id`` (string)
             If BroControl is managing a cluster comprised of nodes
             using non-global IPv6 addresses, then this configures the
-            RFC 4007 ``zone_id`` string that the node associates with
+            :rfc:`4007` ``zone_id`` string that the node associates with
             the common zone that all cluster nodes are a part of.  This
             identifier may differ between nodes.
 
@@ -65,13 +86,13 @@ class Node:
     # same name. Custom keys can be add via addKey().
     _keys = { "type": 1, "host": 1, "interface": 1, "aux_scripts": 1, 
               "brobase": 1, "ether": 1, "zone_id": 1,
-              "lb_procs": 1, "lb_method": 1, "lb_interfaces": 1 }
+              "lb_procs": 1, "lb_method": 1, "lb_interfaces": 1,
+              "pin_cpus": 1, "env_vars": 1 }
 
 
     def __init__(self, name):
         """Instantiates a new node of the given name."""
         self.name = name
-        self.env_vars = []
 
         for key in Node._keys:
             self.__dict__[key] = ""
@@ -86,6 +107,9 @@ class Node:
         def fmt(v):
             if type(v) == type([]):
                 v = ",".join(v)
+            elif type(v) == type({}):
+                v = ",".join(["%s=%s" % (key, val) for (key, val) in sorted(v.items())])
+
             return v
 
         return ("%15s - " % self.name) + " ".join(["%s=%s" % (k, fmt(self.__dict__[k])) for k in sorted(self.__dict__.keys())])

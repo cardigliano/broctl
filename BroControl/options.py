@@ -2,6 +2,8 @@
 #
 # If started directly, will print option reference documentation.
 
+import sys
+
 class Option:
     # Options category.
     USER = 1       # Standard user-configurable option.
@@ -22,7 +24,7 @@ options = [
            "Enable extensive debugging output in spool/debug.log."),
 
     Option("HaveNFS", "0", "bool", Option.USER, False,
-           "True if shared files are mounted across all nodes via NFS (see FAQ)."),
+           "True if shared files are mounted across all nodes via NFS (see the FAQ_)."),
     Option("SaveTraces", "0", "bool", Option.USER, False,
            "True to let backends capture short-term traces via '-w'. These are not archived but might be helpful for debugging."),
 
@@ -31,7 +33,7 @@ options = [
     Option("CommTimeout", "10", "int", Option.USER, False,
            "The number of seconds to wait before assuming Broccoli communication events have timed out."),
     Option("LogRotationInterval", "3600", "int", Option.USER, False,
-           "The frequency of log rotation in seconds for the manager/standalone node."),
+           "The frequency of log rotation in seconds for the manager/standalone node (zero to disable rotation). This overrides the Bro script variable Log::default_rotation_interval."),
     Option("LogDir", "${BroBase}/logs", "string", Option.USER, False,
            "Directory for archived log files."),
     Option("MakeArchiveName", "${BroBase}/share/broctl/scripts/make-archive-name", "string", Option.USER, False,
@@ -44,21 +46,21 @@ options = [
            "If archived logs will be compressed, the file extension to use on compressed log files. When specifying a file extension, don't include the period character (e.g., specify 'gz' instead of '.gz')."),
 
     Option("SendMail", "@SENDMAIL@", "string", Option.USER, False,
-           "Location of the sendmail binary.  Make this string blank to prevent email from being sent. The default value is configuration-dependent and determined automatically by CMake at configure-time."),
+           "Location of the sendmail binary.  Make this string blank to prevent email from being sent. The default value is configuration-dependent and determined automatically by CMake at configure-time. This overrides the Bro script variable Notice::sendmail."),
     Option("MailSubjectPrefix", "[Bro]", "string", Option.USER, False,
-           "General Subject prefix for mails."),
+           "General Subject prefix for mails. This overrides the Bro script variable Notice::mail_subject_prefix."),
 
     Option("MailReplyTo", "", "string", Option.USER, False,
            "Reply-to address for broctl-generated mails."),
     Option("MailTo", "<user>", "string", Option.USER, True,
-           "Destination address for non-alarm mails."),
+           "Destination address for non-alarm mails. This overrides the Bro script variable Notice::mail_dest."),
     Option("MailFrom", "Big Brother <bro@localhost>", "string", Option.USER, True,
-           "Originator address for mails."),
+           "Originator address for mails. This overrides the Bro script variable Notice::mail_from."),
 
     Option("MailAlarmsTo", "${MailTo}", "string", Option.USER, True,
-           "Destination address for alarm summary mails. Default is to use the same address as MailTo."),
+           "Destination address for alarm summary mails. Default is to use the same address as MailTo. This overrides the Bro script variable Notice::mail_dest_pretty_printed."),
     Option("MailAlarmsInterval", "86400", "int", Option.USER, False,
-           "The frequency (in seconds) of sending alarm summary mails (zero to disable)."),
+           "The frequency (in seconds) of sending alarm summary mails (zero to disable). This overrides the Bro script variable Log::default_mail_alarms_interval."),
 
     Option("MailConnectionSummary", "1", "bool", Option.USER, False,
            "True to mail connection summary reports each log rotation interval (if false, then connection summary reports will still be generated and archived, but they will not be mailed). However, this option has no effect if the trace-summary script is not available."),
@@ -73,6 +75,8 @@ options = [
            "Additional arguments to pass to Bro on the command-line."),
     Option("MemLimit", "unlimited", "string", Option.USER, False,
            "Maximum amount of memory for Bro processes to use (in KB, or the string 'unlimited')."),
+    Option("Env_Vars", "", "string", Option.USER, False,
+           "A comma-separated list of environment variables (e.g. 'VAR1=123, VAR2=456') to pass to Bro on the command-line.  Node-specific values (specified in the node configuration file) override these global values."),
 
     Option("TimeFmt", "%d %b %H:%M:%S", "string", Option.USER, False,
            "Format string to print date/time specifications (see 'man strftime')."),
@@ -106,9 +110,9 @@ options = [
            "If the manager should connect to a Time Machine, the port it is running on (in Bro syntax, e.g., 47757/tcp)."),
 
     Option("IPv6Comm", "1", "bool", Option.USER, False,
-           "Enable IPv6 communication between cluster nodes (and also between them and BroControl)"),
+           "Enable IPv6 communication between cluster nodes (and also between them and BroControl). This overrides the Bro script variable Communication::listen_ipv6."),
     Option("ZoneID", "", "string", Option.USER, False,
-           "If the host running BroControl is managing a cluster comprised of nodes with non-global IPv6 addresses, this option indicates what RFC 4007 zone_id to append to node addresses when communicating with them."),
+           "If the host running BroControl is managing a cluster comprised of nodes with non-global IPv6 addresses, this option indicates what :rfc:`4007` zone_id to append to node addresses when communicating with them."),
 
     # Automatically set.
     Option("BroBase", "", "string", Option.AUTOMATIC, True,
@@ -134,7 +138,7 @@ options = [
            "Directory for configuration files."),
     Option("SpoolDir", "${BroBase}/spool", "string", Option.AUTOMATIC, False,
            "Directory for run-time data."),
-    Option("PolicyDir", "${BroBase}/share/bro", "string", Option.AUTOMATIC, False,
+    Option("PolicyDir", "${BroScriptDir}", "string", Option.AUTOMATIC, False,
            "Directory for standard policy files."),
     Option("StaticDir", "${BroBase}/share/broctl", "string", Option.AUTOMATIC, False,
            "Directory for static, arch-independent files."),
@@ -172,7 +176,7 @@ options = [
            "Log file for statistics."),
 
     Option("SitePolicyPath", "${PolicyDir}/site", "string", Option.USER, False,
-           "Directories to search for local policy files, separated by colons."),
+           "Directories to search for local policy files, separated by colons. For each such directory, all files and subdirectories are copied to PolicyDirSiteInstall during 'broctl install' (however, if the same file or subdirectory is found in more than one such directory, then only the first one encountered will be used)."),
     Option("SitePluginPath", "", "string", Option.USER, False,
            "Directories to search for custom plugins, separated by colons."),
 
