@@ -1,4 +1,21 @@
 
+1.2 | 2013-11-07 07:04:54 -0800
+
+  * Release 1.2.
+
+1.2-beta-28 | 2013-11-06 00:22:24 -0800
+
+  * Improve check-pid helper script. (Daniel Thayer)
+
+1.2-beta-26 | 2013-11-01 04:51:57 -0700
+
+  * Add another warning message when a host is not alive. (Daniel
+    Thayer)
+
+1.2-beta-24 | 2013-10-31 00:19:41 -0700
+
+  * Do not check if the local host is "alive". (Daniel Thayer)
+
 1.2-beta-22 | 2013-10-26 19:19:31 -0700
 
   * Document which broctl options override Bro script variables.
