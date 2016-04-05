@@ -1,5 +1,5 @@
 # Test that the stop command reports a node that crashed during shutdown,
-# and verify that broctl does not clean the crashed node's working directory
+# and verify that broctl cleans the crashed node's working directory
 # and does not send a crash report.
 #
 # @TEST-EXEC: bash %INPUT
@@ -32,12 +32,12 @@ broctl status > status1.out 2>&1
 # test the stop command
 broctl stop > stop.out 2>&1
 
-# verify that the crashed node is in the crashed state
+# verify that the crashed node is in the stopped state
 broctl status > status2.out 2>&1
 
-# the stop command should not cleanup the crashed node directory
+# the stop command should cleanup the crashed node directory
 while read line; do
-    test -e $BROCTL_INSTALL_PREFIX/$line || ret=1
+    test ! -e $BROCTL_INSTALL_PREFIX/$line || ret=1
 done << EOF
 spool/worker-1/.cmdline
 spool/worker-1/.env_vars
@@ -47,8 +47,8 @@ spool/worker-1/stderr.log
 spool/worker-1/stdout.log
 EOF
 
-# the crashed node should not be logged as "stopped" in stats.log
-grep stopped $BROCTL_INSTALL_PREFIX/spool/stats.log | grep worker-1 && ret=1
+# the crashed node should be logged as "stopped" in stats.log
+grep stopped $BROCTL_INSTALL_PREFIX/spool/stats.log | grep worker-1 || ret=1
 
 # verify that a crash report was not sent
 test ! -e $BROCTL_INSTALL_PREFIX/sendmail.out || ret=1

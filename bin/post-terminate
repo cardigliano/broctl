@@ -7,17 +7,17 @@
 # finally (if the node didn't crash) remove the tmp dir if all logs were
 # successfully archived.
 #
-# post-terminate <type> <dir> [<crashflag>]
+# post-terminate <type> <dir> <unrotated> [<crashflag>]
 #
 # <type> is the node's type ("manager", "worker", etc.).
 # <dir> is the node's working directory.
+# <unrotated> is 1 to also archive unrotated logs (such as stdout/stderr.log),
+#             or 0 to skip those.
 #
-# If <crashflag> is not set, then BroControl has stopped Bro normally.
-# If <crashflag> is "crash", then BroControl has determined that Bro crashed
-# and this script will return information about the crash on stdout which is
-# suitable for mailing to the user.  If <crashflag> is "killed", then
-# BroControl terminated Bro forcefully (but intentionally) by SIGKILL while
-# trying to stop Bro.
+# If the optional <crashflag> is "crash", then BroControl has determined that
+# Bro crashed and this script will return information about the crash on
+# stdout which is suitable for mailing to the user, and the tmp directory
+# for such a node will not be deleted by this script.
 
 function sendfailuremail
 {
@@ -32,25 +32,22 @@ Check the post-terminate.out file in that directory for any error messages.
 _EOF_
 }
 
-if [ $# -lt 2 -o $# -gt 3 ]; then
+if [ $# -lt 3 -o $# -gt 4 ]; then
     echo "post-terminate: wrong usage: $@"
     exit 1
 fi
 
 ntype=$1
 dir=$2
+unrotated=$3
+crash=0
+if [ "$4" = "crash" ]; then
+    crash=1
+fi
 
 if [ ! -d "$dir" ]; then
     echo "post-terminate: directory not found: $dir"
     exit 1
-fi
-
-crash=0
-killed=0
-if [ "$3" = "crash" ]; then
-    crash=1
-elif [ "$3" = "killed" ]; then
-    killed=1
 fi
 
 # Compute both timestamps here so we get consistent results.
@@ -200,7 +197,7 @@ archivelogs rotated
 # If Bro crashed or was killed, then we run log postprocessors here
 # on all unrotated logs (including stdout.log/stderr.log, as they might
 # have useful info in this situation).
-if [ $crash -eq 1 -o $killed -eq 1 ]; then
+if [ $unrotated -eq 1 ]; then
     if [ $crash -eq 1 ]; then
         # If Bro crashed, then we tell archive-log to not delete the log file
         # (however, in this case the log file will be renamed to indicate it

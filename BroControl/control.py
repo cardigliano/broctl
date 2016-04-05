@@ -352,7 +352,11 @@ class Controller:
 
         msg = "If you want to help us debug this problem, then please forward\nthis mail to reports@bro.org\n"
         postterminate = os.path.join(self.config.scriptsdir, "post-terminate")
-        cmds = [(node, postterminate, [node.type, node.cwd(), "crash"]) for node in nodes]
+
+        # The "1" argument means include stdout/stderr.log in archived logs,
+        # and the "crash" argument means create a crash report and don't delete
+        # the tmp directory.
+        cmds = [(node, postterminate, [node.type, node.cwd(), "1", "crash"]) for node in nodes]
 
         for (node, success, output) in self.executor.run_cmds(cmds):
             if success:
@@ -502,17 +506,17 @@ class Controller:
         for node in todo:
             results.set_node_fail(node)
 
-        # Do post-terminate cleanup for those which terminated gracefully.
-        cleanup = [node for node in terminated if not node.hasCrashed()]
-
+        # Do post-terminate cleanup for those which terminated.
         cmds = []
         postterminate = os.path.join(self.config.scriptsdir, "post-terminate")
-        for node in cleanup:
-            crashflag = ""
-            if node in kill:
-                crashflag = "killed"
+        for node in terminated:
+            unrotated = "0"
+            # If node crashed or was killed, then archive stdout/stderr.log
+            if node.hasCrashed() or node in kill:
+                unrotated = "1"
 
-            cmds += [(node, postterminate, [node.type, node.cwd(), crashflag])]
+            # If node crashed during shutdown, we do not send a crash report.
+            cmds += [(node, postterminate, [node.type, node.cwd(), unrotated])]
 
         for (node, success, output) in self.executor.run_cmds(cmds):
             if success:
